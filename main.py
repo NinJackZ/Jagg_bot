@@ -3,8 +3,9 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord.ext import voice_recv
+from faster_whisper import WhisperModel
 import discord.ext.voice_recv as voice_recv
-import wave
+import wave, asyncio, io
 
 load_dotenv()
 
@@ -13,6 +14,9 @@ GUILD_IDS = [
     1549815539520774144,
     236828540975185921,
 ]
+
+# Initialize the Whisper model
+whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -31,6 +35,7 @@ SLURS = load_slurs()
 
 # Check to receuive audio packets from users in voice channels
 voice_audio = {}
+voice_audio_locks = {}
 
 def on_voice_packet(user, data):
     if not data.pcm:
@@ -43,10 +48,90 @@ def on_voice_packet(user, data):
 
     voice_audio[user_id].extend(data.pcm)
 
-    print(
-        f"Received audio packet from {user} "
-        f"({len(data.pcm)} bytes)"
-    )
+
+# Helper to transcribe each recieved audio packet
+async def transcribe_voice_loop():
+    while True:
+        await asyncio.sleep(5)
+
+        if not voice_audio:
+            continue
+
+        for user_id, audio in list(voice_audio.items()):
+            if not audio:
+                continue
+
+            # Take the current audio and start a fresh buffer
+            audio_chunk = bytes(audio)
+            voice_audio[user_id].clear()
+
+            try:
+                # Create an in-memory wav file
+                wav_buffer = io.BytesIO()
+
+                with wave.open(wav_buffer, "wb") as wav_file:
+                    wav_file.setnchannels(2)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(48000)
+                    wav_file.writeframes(audio_chunk)
+
+                wav_buffer.seek(0)
+
+                # Whisper expects a file-like object or path
+                segments, info = whisper_model.transcribe(
+                    wav_buffer,
+                    language="en"
+                )
+
+                text = " ".join(
+                    segment.text.strip()
+                    for segment in segments
+                ).strip()
+
+                if text:
+                    print(
+                        f"Transcription from {user_id}: {text}"
+                    )
+
+                matched_slur = next(
+                    (
+                        slur
+                        for slur in SLURS
+                        if slur in text.lower()
+                    ),
+                    None
+                )
+
+                if matched_slur:
+                    print(
+                        f"Blocked word detected from {user_id}: "
+                        f"{matched_slur}"
+                    )
+
+                    # Find the Discord member in the guild
+                    for guild in bot.guilds:
+                        member = guild.get_member(user_id)
+
+                        if member:
+                            # Announce in the channel
+                            channel = member.voice.channel if member.voice else None
+
+                            if channel:
+                                await channel.send(
+                                    f"{member.mention} has been removed from "
+                                    f"voice chat for using a the word '{matched_slur}'"
+                                )
+
+                                # Disconnect them from voice
+                                await member.move_to(None)
+
+                            break
+
+            except Exception as e:
+                print(
+                    f"Voice transcription error for {user_id}: {e}"
+                )
+
 
 class JaggBot(commands.Bot):
     def __init__(self):
@@ -64,6 +149,11 @@ class JaggBot(commands.Bot):
             guild = discord.Object(id=guild_id)
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
+
+            if not hasattr(bot, "voice_transcription_task"):
+                bot.voice_transcription_task = asyncio.create_task(
+                    transcribe_voice_loop()
+                )
 
             print(f"Logged in as {self.user} (ID: {self.user.id})")
             print(f"Synced {len(synced)} command(s) to server {guild_id}")
@@ -151,6 +241,32 @@ async def savevoice(interaction: discord.Interaction):
         f"Saved received voice audio to `{filename}`."
     )
 
+@bot.tree.command(name="transcribe", description="Transcribe the saved voice recording")
+async def transcribe(interaction: discord.Interaction):
+    filename = "voice_test.wav"
+
+    try:
+        segments, info = whisper_model.transcribe(filename)
+
+        text = " ".join(
+            segment.text.strip()
+            for segment in segments
+        ).strip()
+
+        if not text:
+            text = "No speech detected."
+
+        await interaction.response.send_message(
+            f"**Transcription:**\n{text}"
+        )
+
+    except Exception as e:
+        print(f"Transcription error: {e}")
+
+        await interaction.response.send_message(
+            "Failed to transcribe the recording.",
+            ephemeral=True
+        )
 # Link command to link a Discord account to a FACEIT account
 # @bot.tree.command(name="link", description="Link your Discord account to a FACEIT account")
 # async def link(interaction: discord.Interaction, username: str):
