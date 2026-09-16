@@ -2,3 +2,4 @@ discord.py
 python-dotenv
 discord-ext-voice-recv
 discord.ext
+faster-whisper
