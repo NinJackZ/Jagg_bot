@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Change based on server id
-GUILD_ID = 1549815539520774144
+GUILD_IDS = [
+    1549815539520774144,
+    236828540975185921,
+]
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
@@ -35,12 +39,13 @@ class JaggBot(commands.Bot):
 
     async def on_ready(self):
         # User serverid or guildid to sync commands to a specific server
-        guild = discord.Object(id=GUILD_ID)
-        self.tree.copy_global_to(guild=guild)
-        synced = await self.tree.sync(guild=guild)
+        for guild_id in GUILD_IDS:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
 
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
-        print(f"Synced {len(synced)} command(s) to server")
+            print(f"Logged in as {self.user} (ID: {self.user.id})")
+            print(f"Synced {len(synced)} command(s) to server {guild_id}")
 
     async def on_message(self, message):
         if message.author.bot:
@@ -49,16 +54,15 @@ class JaggBot(commands.Bot):
         message_content = message.content.lower()
 
         # Check for slurs in the message content
+        matched_slur = next((slur for slur in SLURS if slur in message_content), None)
 
-        if any(slur in message_content for slur in SLURS):
+        if matched_slur:
             print(
                 f"Blocked word detected from "
-                f"{message.author} in #{message.channel}"
+                f"{message.author} in #{message.channel}: {matched_slur}"
             )
 
-            await message.channel.send(
-                f"@everyone Guys get a load of this guy ->{message.author.mention} he said a naughty word"
-            )
+            await message.channel.send(f"@everyone Guys get a load of this guy -> {message.author.mention} he said {matched_slur}, what a loser!")
 
             if message.author.voice:
                 await message.author.move_to(None)
