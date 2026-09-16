@@ -83,7 +83,9 @@ async def transcribe_voice_loop():
                 # Whisper expects a file-like object or path
                 segments, info = whisper_model.transcribe(
                     wav_buffer,
-                    language="en"
+                    language="en",
+                    vad_filter=True,
+                    condition_on_previous_text=False
                 )
 
                 text = " ".join(
