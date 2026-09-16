@@ -6,6 +6,9 @@ from discord.ext import voice_recv
 from faster_whisper import WhisperModel
 import discord.ext.voice_recv as voice_recv
 import wave, asyncio, io
+import logging
+
+logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.WARNING)
 
 load_dotenv()
 
@@ -16,7 +19,7 @@ GUILD_IDS = [
 ]
 
 # Initialize the Whisper model
-whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+whisper_model = WhisperModel("medium", device="cpu", compute_type="int8")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -119,7 +122,7 @@ async def transcribe_voice_loop():
                             if channel:
                                 await channel.send(
                                     f"{member.mention} has been removed from "
-                                    f"voice chat for using a the word '{matched_slur}'"
+                                    f"voice chat for using the word '{matched_slur}'"
                                 )
 
                                 # Disconnect them from voice
