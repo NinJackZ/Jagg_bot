@@ -4,6 +4,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from discord.ext import voice_recv
 import discord.ext.voice_recv as voice_recv
+import wave
 
 load_dotenv()
 
@@ -29,10 +30,22 @@ def load_slurs():
 SLURS = load_slurs()
 
 # Check to receuive audio packets from users in voice channels
+voice_audio = {}
+
 def on_voice_packet(user, data):
+    if not data.pcm:
+        return
+
+    user_id = user.id
+
+    if user_id not in voice_audio:
+        voice_audio[user_id] = bytearray()
+
+    voice_audio[user_id].extend(data.pcm)
+
     print(
-        f"Received audio from {user} "
-        f"({len(data.pcm)} bytes PCM)"
+        f"Received audio packet from {user} "
+        f"({len(data.pcm)} bytes)"
     )
 
 class JaggBot(commands.Bot):
@@ -108,6 +121,34 @@ async def join(interaction: discord.Interaction):
 
     await interaction.response.send_message(
         f"Joined **{channel.name}**."
+    )
+
+# Save voice audio to WAV file
+@bot.tree.command(name="savevoice", description="Save received voice audio to a WAV file")
+async def savevoice(interaction: discord.Interaction):
+    global voice_audio
+
+    if not voice_audio:
+        await interaction.response.send_message(
+            "No voice audio has been received yet.",
+            ephemeral=True
+        )
+        return
+
+    filename = "voice_test.wav"
+
+    with wave.open(filename, "wb") as wav_file:
+        wav_file.setnchannels(2)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(48000)
+
+        for user_audio in voice_audio.values():
+            wav_file.writeframes(user_audio)
+
+    voice_audio.clear()
+
+    await interaction.response.send_message(
+        f"Saved received voice audio to `{filename}`."
     )
 
 # Link command to link a Discord account to a FACEIT account
