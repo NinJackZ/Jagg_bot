@@ -2,6 +2,8 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from discord.ext import voice_recv
+import discord.ext.voice_recv as voice_recv
 
 load_dotenv()
 
@@ -26,6 +28,12 @@ def load_slurs():
     
 SLURS = load_slurs()
 
+# Check to receuive audio packets from users in voice channels
+def on_voice_packet(user, data):
+    print(
+        f"Received audio from {user} "
+        f"({len(data.pcm)} bytes PCM)"
+    )
 
 class JaggBot(commands.Bot):
     def __init__(self):
@@ -74,6 +82,33 @@ bot = JaggBot()
 @bot.tree.command(name="ping", description="Check if the bot is online")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
+
+
+# Join command to join the user's current voice channel
+@bot.tree.command(name="join", description="Join your current voice channel")
+async def join(interaction: discord.Interaction):
+    if not interaction.user.voice:
+        await interaction.response.send_message(
+            "You need to be in a voice channel first.",
+            ephemeral=True
+        )
+        return
+
+    channel = interaction.user.voice.channel
+
+    if interaction.guild.voice_client:
+        await interaction.response.send_message(
+            "I'm already connected to a voice channel.",
+            ephemeral=True
+        )
+        return
+
+    voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
+    voice_client.listen(voice_recv.BasicSink(on_voice_packet))
+
+    await interaction.response.send_message(
+        f"Joined **{channel.name}**."
+    )
 
 # Link command to link a Discord account to a FACEIT account
 # @bot.tree.command(name="link", description="Link your Discord account to a FACEIT account")
