@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Change based on server id
 GUILD_ID = 1549815539520774144
-
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
@@ -34,6 +34,7 @@ class JaggBot(commands.Bot):
         )
 
     async def on_ready(self):
+        # User serverid or guildid to sync commands to a specific server
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         synced = await self.tree.sync(guild=guild)
@@ -46,6 +47,8 @@ class JaggBot(commands.Bot):
             return
 
         message_content = message.content.lower()
+
+        # Check for slurs in the message content
 
         if any(slur in message_content for slur in SLURS):
             print(
@@ -62,12 +65,15 @@ class JaggBot(commands.Bot):
 
 bot = JaggBot()
 
+# Define slash commands
+# Ping command to check if the bot is online
 @bot.tree.command(name="ping", description="Check if the bot is online")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
-@bot.tree.command(name="link", description="Link your Discord account to a FACEIT account")
-async def link(interaction: discord.Interaction, username: str):
-    await interaction.response.send_message(f"FACEIT username received: `{username}`")
+# Link command to link a Discord account to a FACEIT account
+# @bot.tree.command(name="link", description="Link your Discord account to a FACEIT account")
+# async def link(interaction: discord.Interaction, username: str):
+#     await interaction.response.send_message(f"FACEIT username received: `{username}`")
 
 bot.run(TOKEN)
