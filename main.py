@@ -13,21 +13,23 @@ load_dotenv()
 
 # Change based on server id
 GUILD_IDS = [
-    1549815539520774144, # Jack Test server
-    236828540975185921, # Exedite
+    int(guild_id.strip())
+    for guild_id in os.getenv("GUILD_IDS", "").split(",")
+    if guild_id.strip()
 ]
 
 # Map Faceit User to discord user
-FACEIT_PLAYERS = {
-    235072661607284736: "Tongetoon",
-    255268597386051584: "DragonDAI",
-    258339524579426304: "The_Pharao",
-    189073530996916226: "Adreaf",
-    443046560658620436: "_SpooN_",
-    594833314691678209: "SpahooN",
-    577778649579782144: "IBADDDD",
-    1458098880892895374: "ohtobii",
-}
+FACEIT_PLAYERS = {}
+
+for player in os.getenv("FACEIT_PLAYERS", "").split(","):
+    player = player.strip()
+
+    if not player:
+        continue
+
+    discord_id, faceit_username = player.split(":", 1)
+
+    FACEIT_PLAYERS[int(discord_id)] = faceit_username
 
 # Initialize the Whisper model
 whisper_model = WhisperModel("medium", device="cpu", compute_type="int8")
@@ -40,6 +42,12 @@ if not TOKEN:
 
 if not FACEIT_API_KEY:
     raise RuntimeError("Dude where tf is ur faceit api key")
+
+if not GUILD_IDS:
+    raise RuntimeError("GUILD_IDS is not set in .env")
+
+if not FACEIT_PLAYERS:
+    raise RuntimeError("FACEIT_PLAYERS is not set in .env")
 
 # Initilize the bot with a list of slurs
 def load_slurs():
