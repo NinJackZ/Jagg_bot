@@ -374,13 +374,14 @@ async def transcribe_voice_loop():
                 ).strip()
 
                 if text:
-                    user = bot.get_user(user_id)
+                    username = f"User {user_id}"
 
-                    username = (
-                        user.display_name
-                        if user
-                        else f"User {user_id}"
-                    )
+                    for guild in bot.guilds:
+                        member = guild.get_member(user_id)
+
+                        if member:
+                            username = member.display_name
+                            break
 
                     print(
                         f"Transcription from {username}: {text}"
