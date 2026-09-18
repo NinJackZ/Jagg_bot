@@ -26,6 +26,7 @@ FACEIT_PLAYERS = {
     443046560658620436: "_SpooN_",
     594833314691678209: "SpahooN",
     577778649579782144: "IBADDDD",
+    1458098880892895374: "ohtobii",
 }
 
 # Initialize the Whisper model
@@ -91,6 +92,170 @@ async def get_faceit_player(username):
                 return None
 
             return await response.json()
+
+async def get_faceit_history(player_id):
+    url = f"https://open.faceit.com/data/v4/players/{player_id}/history"
+
+    headers = {
+        "Authorization": f"Bearer {FACEIT_API_KEY}"
+    }
+
+    params = {
+        "game": "cs2",
+        "limit": 5
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            url,
+            headers=headers,
+            params=params
+        ) as response:
+
+            if response.status != 200:
+                print(
+                    f"FACEIT history API error: "
+                    f"{response.status}"
+                )
+                return None
+
+            return await response.json()
+
+async def get_faceit_match_stats(match_id):
+    url = f"https://open.faceit.com/data/v4/matches/{match_id}/stats"
+
+    headers = {
+        "Authorization": f"Bearer {FACEIT_API_KEY}"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            url,
+            headers=headers
+        ) as response:
+
+            if response.status != 200:
+                print(
+                    f"FACEIT match stats API error: "
+                    f"{response.status}"
+                )
+                return None
+
+            return await response.json()
+
+async def get_faceit_recent_performance(player_id, limit=5):
+    history = await get_faceit_history(player_id)
+
+    if not history or not history.get("items"):
+        return None
+
+    matches = history["items"][:limit]
+
+    results = []
+
+    for match in matches:
+        match_id = match.get("match_id")
+
+        if not match_id:
+            continue
+
+        stats = await get_faceit_match_stats(match_id)
+
+        if not stats:
+            continue
+
+        player_stats = None
+
+        for round_data in stats.get("rounds", []):
+            for team in round_data.get("teams", []):
+                for member in team.get("players", []):
+                    if member.get("player_id") == player_id:
+                        player_stats = member
+                        break
+
+                if player_stats:
+                    break
+
+            if player_stats:
+                break
+
+        if not player_stats:
+            continue
+
+        stats_data = player_stats.get("player_stats", {})
+
+        try:
+            kills = int(stats_data.get("Kills", 0))
+        except (ValueError, TypeError):
+            kills = 0
+
+        try:
+            deaths = int(stats_data.get("Deaths", 0))
+        except (ValueError, TypeError):
+            deaths = 0
+
+        try:
+            kd = float(stats_data.get("K/D Ratio", 0))
+        except (ValueError, TypeError):
+            kd = 0
+
+        try:
+            mvps = int(stats_data.get("MVPs", 0))
+        except (ValueError, TypeError):
+            mvps = 0
+
+        try:
+            score = float(stats_data.get("Score", 0))
+        except (ValueError, TypeError):
+            score = 0
+
+        result = "Unknown"
+
+        player_result = stats_data.get("Result")
+
+        if player_result == "1":
+            result = "Win"
+        elif player_result == "0":
+            result = "Loss"
+
+        results.append({
+            "match_id": match_id,
+            "kills": kills,
+            "deaths": deaths,
+            "kd": kd,
+            "mvps": mvps,
+            "score": score,
+            "result": result
+        })
+
+    if not results:
+        return None
+
+    total_kills = sum(match["kills"] for match in results)
+    total_deaths = sum(match["deaths"] for match in results)
+
+    average_kills = total_kills / len(results)
+    average_deaths = total_deaths / len(results)
+    average_kd = sum(match["kd"] for match in results) / len(results)
+    average_mvps = sum(match["mvps"] for match in results ) / len(results)
+    average_score = sum(match["score"] for match in results) / len(results)
+
+    wins = sum(1 for match in results if match["result"] == "Win")
+    losses = sum(1 for match in results if match["result"] == "Loss")
+    win_rate = (wins / len(results)) * 100
+    
+    return {
+        "matches": results,
+        "match_count": len(results),
+        "wins": wins,
+        "losses": losses,
+        "average_mvps": average_mvps,
+        "win_rate": win_rate,
+        "average_kills": average_kills,
+        "average_deaths": average_deaths,
+        "average_kd": average_kd,
+        "average_score": average_score,
+    }
 
 # Helper to transcribe each recieved audio packet
 async def transcribe_voice_loop():
@@ -231,7 +396,6 @@ bot = JaggBot()
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
-
 # Join command to join the user's current voice channel
 @bot.tree.command(name="join", description="Join your current voice channel")
 async def join(interaction: discord.Interaction):
@@ -258,99 +422,149 @@ async def join(interaction: discord.Interaction):
         f"Joined **{channel.name}**."
     )
 
-# Save voice audio to WAV file
-@bot.tree.command(name="savevoice", description="Save received voice audio to a WAV file")
-async def savevoice(interaction: discord.Interaction):
-    global voice_audio
-
-    if not voice_audio:
-        await interaction.response.send_message(
-            "No voice audio has been received yet.",
-            ephemeral=True
-        )
-        return
-
-    filename = "voice_test.wav"
-
-    with wave.open(filename, "wb") as wav_file:
-        wav_file.setnchannels(2)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(48000)
-
-        for user_audio in voice_audio.values():
-            wav_file.writeframes(user_audio)
-
-    voice_audio.clear()
-
-    await interaction.response.send_message(
-        f"Saved received voice audio to `{filename}`."
-    )
-
-@bot.tree.command(name="transcribe", description="Transcribe the saved voice recording")
-async def transcribe(interaction: discord.Interaction):
-    filename = "voice_test.wav"
-
-    try:
-        segments, info = whisper_model.transcribe(filename)
-
-        text = " ".join(
-            segment.text.strip()
-            for segment in segments
-        ).strip()
-
-        if not text:
-            text = "No speech detected."
-
-        await interaction.response.send_message(
-            f"**Transcription:**\n{text}"
-        )
-
-    except Exception as e:
-        print(f"Transcription error: {e}")
-
-        await interaction.response.send_message(
-            "Failed to transcribe the recording.",
-            ephemeral=True
-        )
-
-@bot.tree.command(name="faceit", description="Show your FACEIT profile")
-async def faceit(interaction: discord.Interaction):
-    discord_user_id = interaction.user.id
-
-    # Check if this discord user has a faceit account configured
-    if discord_user_id not in FACEIT_PLAYERS:
-        await interaction.response.send_message(
-            "You don't have a FACEIT account configured.",
-            ephemeral=True
-        )
-        return
-
-    faceit_username = FACEIT_PLAYERS[discord_user_id]
-
+# Faceit leaderboard command
+@bot.tree.command(name="faceit", description="Show each Faceit Exedian stats on their last 5 matches")
+async def faceit_leaderboard(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    player = await get_faceit_player(faceit_username)
+    leaderboard = []
 
-    if not player:
+    for discord_user_id, faceit_username in FACEIT_PLAYERS.items():
+
+        player = await get_faceit_player(faceit_username)
+
+        if not player:
+            continue
+
+        player_id = player.get("player_id")
+
+        if not player_id:
+            continue
+
+        performance = await get_faceit_recent_performance(player_id, limit=5)
+
+        if not performance:
+            continue
+
+        member = interaction.guild.get_member(discord_user_id)
+
+        if member:
+            display_name = member.display_name
+        else:
+            display_name = faceit_username
+
+        leaderboard.append({
+            "discord_id": discord_user_id,
+            "name": display_name,
+            "faceit_username": faceit_username,
+            **performance
+        })
+
+    if not leaderboard:
         await interaction.followup.send(
-            f"Couldn't find FACEIT player `{faceit_username}`."
+            "No faceit data man."
         )
         return
 
-    game_data = player.get("games", {}).get("cs2")
-
-    if not game_data:
-        await interaction.followup.send(
-            f"Found `{player.get('nickname', faceit_username)}`, "
-            "but no CS2 data was returned."
-        )
-        return
-
-    await interaction.followup.send(
-        f"🎮 **{player.get('nickname', faceit_username)}**\n"
-        f"FACEIT Level: **{game_data.get('skill_level', 'Unknown')}**\n"
-        f"Elo: **{game_data.get('faceit_elo', 'Unknown')}**\n"
-        f"Region: **{game_data.get('region', 'Unknown')}**"
+    # Sort by average K/D
+    leaderboard.sort(
+        key=lambda player: player["average_kd"],
+        reverse=True
     )
+
+    lines = []
+
+    header = (
+        f"{'Rank':<5}"
+        f"{'Player':<16}"
+        f"{'MVPs':<8}"
+        f"{'Kills':<9}"
+        f"{'Deaths':<9}"
+        f"{'K/D':<8}"
+        f"{'Win %':<8}"
+    )
+
+    separator = "─" * len(header)
+
+    lines.append(header)
+    lines.append(separator)
+
+    for index, player in enumerate(leaderboard, start=1):
+
+        player_name = player["name"][:15]
+
+        # Rank symbols for the top 3
+        if index == 1:
+            rank = "#1"
+        elif index == 2:
+            rank = "#2"
+        elif index == 3:
+            rank = "#3"
+        else:
+            rank = f"#{index}"
+
+        lines.append(
+            f"{rank:<5}"
+            f"{player_name:<16}"
+            f"{player['average_mvps']:<8.1f}"
+            f"{player['average_kills']:<9.1f}"
+            f"{player['average_deaths']:<9.1f}"
+            f"{player['average_kd']:<8.2f}"
+            f"{player['win_rate']:<8.0f}"
+        )
+
+    table = "\n".join(lines)
+
+    # Best guy
+    best = max(
+        leaderboard,
+        key=lambda player: player["average_kd"]
+    )
+
+    best_mention = f"<@{best['discord_id']}>"
+
+    best_message = (
+        f"**{best_mention} is the current GOAT**\n"
+        f"Average K/D: **{best['average_kd']:.2f}** "
+        f"over {best['match_count']} games.\n"
+        f"Everyone in the server get on your knees and get sucking"
+    )
+
+    # Worst guy
+    worst = min(
+        leaderboard,
+        key=lambda player: player["average_kd"]
+    )
+
+    worst_mention = f"<@{worst['discord_id']}>"
+
+    roast = (
+        f"💀 **{worst_mention} <- This guy fucking blows man.**\n"
+        f"Average K/D: **{worst['average_kd']:.2f}** "
+        f"over {worst['match_count']} games.\n"
+        f"Homie is the worst exedian. Everyone point and laugh."
+    )
+
+    embed = discord.Embed(
+        title="Exedite FACEIT Leaderboard",
+        description=(
+            f"```text\n{table}\n```"
+        ),
+        color=discord.Color.gold()
+    )
+
+    embed.add_field(
+        name="Current GOAT",
+        value=best_message,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Server Shitter",
+        value=roast,
+        inline=False
+    )
+
+    await interaction.followup.send(embed=embed)
 
 bot.run(TOKEN)
