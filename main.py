@@ -5,8 +5,7 @@ from dotenv import load_dotenv
 from discord.ext import voice_recv
 from faster_whisper import WhisperModel
 import discord.ext.voice_recv as voice_recv
-import wave, asyncio, io
-import logging
+import wave, asyncio, io, logging, aiohttp
 
 logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.WARNING)
 
@@ -14,18 +13,32 @@ load_dotenv()
 
 # Change based on server id
 GUILD_IDS = [
-    1549815539520774144,
-    236828540975185921,
+    1549815539520774144, # Jack Test server
+    236828540975185921, # Exedite
 ]
+
+# Map Faceit User to discord user
+FACEIT_PLAYERS = {
+    235072661607284736: "Tongetoon",
+    255268597386051584: "DragonDAI",
+    258339524579426304: "The_Pharao",
+    189073530996916226: "Adreaf",
+    443046560658620436: "_SpooN_",
+    594833314691678209: "SpahooN",
+    577778649579782144: "IBADDDD",
+}
 
 # Initialize the Whisper model
 whisper_model = WhisperModel("medium", device="cpu", compute_type="int8")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+FACEIT_API_KEY = os.getenv("FACEIT_API_KEY")
 
 if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN is not set in .env tf u doing man")
 
+if not FACEIT_API_KEY:
+    raise RuntimeError("Dude where tf is ur faceit api key")
 
 # Initilize the bot with a list of slurs
 def load_slurs():
@@ -51,6 +64,33 @@ def on_voice_packet(user, data):
 
     voice_audio[user_id].extend(data.pcm)
 
+async def get_faceit_player(username):
+    url = "https://open.faceit.com/data/v4/players"
+
+    headers = {
+        "Authorization": f"Bearer {FACEIT_API_KEY}"
+    }
+
+    params = {
+        "nickname": username,
+        "game": "cs2"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            url,
+            headers=headers,
+            params=params
+        ) as response:
+
+            if response.status != 200:
+                print(
+                    f"FACEIT API error: "
+                    f"{response.status}"
+                )
+                return None
+
+            return await response.json()
 
 # Helper to transcribe each recieved audio packet
 async def transcribe_voice_loop():
@@ -107,30 +147,30 @@ async def transcribe_voice_loop():
                     None
                 )
 
-                if matched_slur:
-                    print(
-                        f"Blocked word detected from {user_id}: "
-                        f"{matched_slur}"
-                    )
+                # if matched_slur:
+                #     print(
+                #         f"Blocked word detected from {user_id}: "
+                #         f"{matched_slur}"
+                #     )
 
-                    # Find the Discord member in the guild
-                    for guild in bot.guilds:
-                        member = guild.get_member(user_id)
+                #     # Find the Discord member in the guild
+                #     for guild in bot.guilds:
+                #         member = guild.get_member(user_id)
 
-                        if member:
-                            # Announce in the channel
-                            channel = member.voice.channel if member.voice else None
+                #         if member:
+                #             # Announce in the channel
+                #             channel = member.voice.channel if member.voice else None
 
-                            if channel:
-                                await channel.send(
-                                    f"{member.mention} has been removed from "
-                                    f"voice chat for using the word '{matched_slur}'"
-                                )
+                #             if channel:
+                #                 await channel.send(
+                #                     f"{member.mention} has been removed from "
+                #                     f"voice chat for using the word '{matched_slur}'"
+                #                 )
 
-                                # Disconnect them from voice
-                                await member.move_to(None)
+                #                 # Disconnect them from voice
+                #                 await member.move_to(None)
 
-                            break
+                #             break
 
             except Exception as e:
                 print(
@@ -272,9 +312,45 @@ async def transcribe(interaction: discord.Interaction):
             "Failed to transcribe the recording.",
             ephemeral=True
         )
-# Link command to link a Discord account to a FACEIT account
-# @bot.tree.command(name="link", description="Link your Discord account to a FACEIT account")
-# async def link(interaction: discord.Interaction, username: str):
-#     await interaction.response.send_message(f"FACEIT username received: `{username}`")
+
+@bot.tree.command(name="faceit", description="Show your FACEIT profile")
+async def faceit(interaction: discord.Interaction):
+    discord_user_id = interaction.user.id
+
+    # Check if this discord user has a faceit account configured
+    if discord_user_id not in FACEIT_PLAYERS:
+        await interaction.response.send_message(
+            "You don't have a FACEIT account configured.",
+            ephemeral=True
+        )
+        return
+
+    faceit_username = FACEIT_PLAYERS[discord_user_id]
+
+    await interaction.response.defer()
+
+    player = await get_faceit_player(faceit_username)
+
+    if not player:
+        await interaction.followup.send(
+            f"Couldn't find FACEIT player `{faceit_username}`."
+        )
+        return
+
+    game_data = player.get("games", {}).get("cs2")
+
+    if not game_data:
+        await interaction.followup.send(
+            f"Found `{player.get('nickname', faceit_username)}`, "
+            "but no CS2 data was returned."
+        )
+        return
+
+    await interaction.followup.send(
+        f"🎮 **{player.get('nickname', faceit_username)}**\n"
+        f"FACEIT Level: **{game_data.get('skill_level', 'Unknown')}**\n"
+        f"Elo: **{game_data.get('faceit_elo', 'Unknown')}**\n"
+        f"Region: **{game_data.get('region', 'Unknown')}**"
+    )
 
 bot.run(TOKEN)
