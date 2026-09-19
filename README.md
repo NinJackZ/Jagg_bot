@@ -1,6 +1,11 @@
 # Jagg_bot
 Custom Discord Bot that does whatever i want it to do
 
+## Requirements
+Install via pip using 
+```
+pip install -r requirements.txt
+```
 
 ## Commands
 ```
