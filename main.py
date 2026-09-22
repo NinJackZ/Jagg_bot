@@ -97,13 +97,7 @@ async def get_faceit_player(username):
         "game": "cs2"
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            url,
-            headers=headers,
-            params=params
-        ) as response:
-
+    async with bot.faceit_session.get(url, headers=headers, params=params) as response:
             if response.status != 200:
                 print(
                     f"FACEIT API error: "
@@ -125,13 +119,7 @@ async def get_faceit_history(player_id):
         "limit": 5
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            url,
-            headers=headers,
-            params=params
-        ) as response:
-
+    async with bot.faceit_session.get(url, headers=headers, params=params) as response:
             if response.status != 200:
                 print(
                     f"FACEIT history API error: "
@@ -148,12 +136,7 @@ async def get_faceit_match_stats(match_id):
         "Authorization": f"Bearer {FACEIT_API_KEY}"
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            url,
-            headers=headers
-        ) as response:
-
+    async with bot.faceit_session.get(url, headers=headers) as response:
             if response.status != 200:
                 print(
                     f"FACEIT match stats API error: "
@@ -165,15 +148,21 @@ async def get_faceit_match_stats(match_id):
 
 async def get_faceit_recent_performance(player_id, limit=5):
     history = await get_faceit_history(player_id)
+    total_kills = 0
+    total_deaths = 0
+    wins = 0
+    losses = 0
+    total_entry_count = 0
+    total_entry_wins = 0
+    total_clutches = 0
+    total_kr = 0
+    total_adr = 0
+    match_count = 0
 
     if not history or not history.get("items"):
         return None
 
-    matches = history["items"][:limit]
-
-    results = []
-
-    for match in matches:
+    for match in history["items"][:limit]:
         match_id = match.get("match_id")
 
         if not match_id:
@@ -214,65 +203,71 @@ async def get_faceit_recent_performance(player_id, limit=5):
         except (ValueError, TypeError):
             deaths = 0
 
-        try:
-            kd = float(stats_data.get("K/D Ratio", 0))
-        except (ValueError, TypeError):
-            kd = 0
+        total_kills += kills
+        total_deaths += deaths
 
         try:
-            mvps = int(stats_data.get("MVPs", 0))
+            kr = float(stats_data.get("K/R Ratio", 0))
         except (ValueError, TypeError):
-            mvps = 0
+            kr = 0
 
         try:
-            score = float(stats_data.get("Score", 0))
+            adr = float(stats_data.get("ADR", 0))
         except (ValueError, TypeError):
-            score = 0
+            adr = 0
 
-        result = "Unknown"
+        total_kr += kr
+        total_adr += adr
+        match_count += 1
+
+        try:
+            entry_count = int(stats_data.get("Entry Count", 0))
+        except (ValueError, TypeError):
+            entry_count = 0
+
+        try:
+            entry_wins = int(stats_data.get("Entry Wins", 0))
+        except (ValueError, TypeError):
+            entry_wins = 0
+
+        total_entry_count += entry_count
+        total_entry_wins += entry_wins
+
+        try:
+            clutches = int(stats_data.get("Clutch Kills", 0))
+        except (ValueError, TypeError):
+            clutches = 0
+
+        total_clutches += clutches
 
         player_result = stats_data.get("Result")
 
         if player_result == "1":
-            result = "Win"
+            wins += 1
         elif player_result == "0":
-            result = "Loss"
+            losses += 1
 
-        results.append({
-            "match_id": match_id,
-            "kills": kills,
-            "deaths": deaths,
-            "kd": kd,
-            "mvps": mvps,
-            "score": score,
-            "result": result
-        })
 
-    if not results:
+    if match_count == 0:
         return None
 
-    total_kills = sum(match["kills"] for match in results)
-    total_deaths = sum(match["deaths"] for match in results)
-
-    average_kills = total_kills / len(results)
-    average_deaths = total_deaths / len(results)
-    average_kd = sum(match["kd"] for match in results) / len(results)
-    average_mvps = sum(match["mvps"] for match in results ) / len(results)
-
-    wins = sum(1 for match in results if match["result"] == "Win")
-    losses = sum(1 for match in results if match["result"] == "Loss")
-    win_rate = (wins / len(results)) * 100
+    kd = total_kills / total_deaths if total_deaths > 0 else 0
+    average_kr = total_kr / match_count
+    average_adr = total_adr / match_count
+    entry_success_rate = (total_entry_wins / total_entry_count if total_entry_count > 0 else 0)
+    completed_matches = wins + losses
+    win_rate = ((wins / completed_matches) * 100 if completed_matches > 0 else 0)
     
     return {
-        "matches": results,
-        "match_count": len(results),
+        "match_count": match_count,
         "wins": wins,
         "losses": losses,
-        "average_mvps": average_mvps,
+        "kr": average_kr,
+        "adr": average_adr,
+        "entry_success_rate": entry_success_rate,
+        "total_clutches": total_clutches,
         "win_rate": win_rate,
-        "average_kills": average_kills,
-        "average_deaths": average_deaths,
-        "average_kd": average_kd,
+        "kd": kd,
     }
 
 # Helper to transcribe each recieved audio packet
@@ -473,6 +468,17 @@ class JaggBot(commands.Bot):
             if message.author.voice:
                 await message.author.move_to(None)
 
+        await self.process_commands(message)
+
+    async def setup_hook(self):
+        self.faceit_session = aiohttp.ClientSession()
+
+    async def close(self):
+        if self.faceit_session:
+            await self.faceit_session.close()
+
+        await super().close()
+
 bot = JaggBot()
 
 # Define slash commands
@@ -553,7 +559,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
     # Sort by average K/D
     leaderboard.sort(
-        key=lambda player: player["average_kd"],
+        key=lambda player: player["kd"],
         reverse=True
     )
 
@@ -561,12 +567,13 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
     header = (
         f"{'Rank':<5}"
-        f"{'Player':<16}"
-        f"{'MVPs':<8}"
-        f"{'Kills':<9}"
-        f"{'Deaths':<9}"
-        f"{'K/D':<8}"
-        f"{'Win %':<8}"
+        f"{'Player':<14}"
+        f"{'K/D':<7}"
+        f"{'K/R':<7}"
+        f"{'ADR':<8}"
+        f"{'Win %':<7}"
+        f"{'Entry %':<8}"
+        f"{'Clutch':<7}"
     )
 
     separator = "─" * len(header)
@@ -590,12 +597,13 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
         lines.append(
             f"{rank:<5}"
-            f"{player_name:<16}"
-            f"{player['average_mvps']:<8.1f}"
-            f"{player['average_kills']:<9.1f}"
-            f"{player['average_deaths']:<9.1f}"
-            f"{player['average_kd']:<8.2f}"
-            f"{player['win_rate']:<8.0f}"
+            f"{player['name']:<14}"
+            f"{player['kd']:<7.2f}"
+            f"{player['kr']:<7.2f}"
+            f"{player['adr']:<8.1f}"
+            f"{player['win_rate']:<7.0f}"
+            f"{player['entry_success_rate'] * 100:<8.0f}"
+            f"{player['total_clutches']:<7}"
         )
 
     table = "\n".join(lines)
@@ -603,14 +611,14 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     # Best guy
     best = max(
         leaderboard,
-        key=lambda player: player["average_kd"]
+        key=lambda player: player["kd"]
     )
 
     best_mention = f"<@{best['discord_id']}>"
 
     best_message = (
         f"**{best_mention} is the current GOAT**\n"
-        f"Average K/D: **{best['average_kd']:.2f}** "
+        f"K/D: **{best['kd']:.2f}** "
         f"over {best['match_count']} games.\n"
         f"Everyone in the server get on your knees and get sucking"
     )
@@ -618,14 +626,14 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     # Worst guy
     worst = min(
         leaderboard,
-        key=lambda player: player["average_kd"]
+        key=lambda player: player["kd"]
     )
 
     worst_mention = f"<@{worst['discord_id']}>"
 
     roast = (
         f"💀 **{worst_mention} <- This guy fucking blows man.**\n"
-        f"Average K/D: **{worst['average_kd']:.2f}** "
+        f"K/D: **{worst['kd']:.2f}** "
         f"over {worst['match_count']} games.\n"
         f"Homie is the worst exedian. Everyone point and laugh."
     )
