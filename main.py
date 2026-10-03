@@ -557,11 +557,27 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         )
         return
 
-    # Sort by average K/D
-    leaderboard.sort(
-        key=lambda player: player["kd"],
-        reverse=True
-    )
+    # normalise each stat across the leaderboaprd
+    stats = [ "kd", "kr", "adr", "win_rate", "entry_success_rate", "total_clutches" ]
+
+    for stat in stats:
+        values = [player[stat] for player in leaderboard]
+
+        minimum = min(values)
+        maximum = max(values)
+
+        for player in leaderboard:
+            if maximum == minimum:
+                player[f"{stat}_score"] = 1
+            else:
+                player[f"{stat}_score"] = ((player[stat] - minimum) / (maximum - minimum))
+
+    # weight each stat
+    for player in leaderboard:
+        player["overall_score"] = (player["kd_score"] + player["kr_score"] + player["adr_score"] + player["win_rate_score"] + player["entry_success_rate_score"] + player["total_clutches_score"]) / 6
+
+    # sort by overall performance
+    leaderboard.sort(key=lambda player: player["overall_score"], reverse=True)
 
     lines = []
 
@@ -611,7 +627,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     # Best guy
     best = max(
         leaderboard,
-        key=lambda player: player["kd"]
+        key=lambda player: player["overall_score"]
     )
 
     best_mention = f"<@{best['discord_id']}>"
@@ -626,7 +642,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     # Worst guy
     worst = min(
         leaderboard,
-        key=lambda player: player["kd"]
+        key=lambda player: player["overall_score"]
     )
 
     worst_mention = f"<@{worst['discord_id']}>"
