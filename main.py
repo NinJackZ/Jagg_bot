@@ -605,13 +605,14 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
     for index, player in enumerate(leaderboard, start=1):
 
-        player_name = player["name"][:15]
-
+        # Jack gets ninja emoji always
+        if player["discord_id"] == 235072661607284736:
+            rank = "🥷🏻"
         # Rank symbols for the top 3
-        if index == 1:
+        elif index == 1:
             rank = "🫅🏻"
         elif index == 2:
-            rank = "🥷🏼"
+            rank = "👨🏻‍🚀"
         elif index == 3:
             rank = "🐌"
         else:
