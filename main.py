@@ -663,7 +663,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     lines = []
 
     header = (
-        f"{'Rank':<5}"
+        f"{'Rank':<6}"
         f"{'Player':<14}"
         f"{'K/D':<7}"
         f"{'K/R':<7}"
@@ -689,7 +689,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         elif index == 2:
             rank = "👨🏻‍🚀"
         elif index == 3:
-            rank = "🐌"
+            rank = "🕴"
         else:
             rank = f"#{index}"
 
