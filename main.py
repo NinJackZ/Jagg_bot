@@ -158,6 +158,10 @@ async def get_faceit_recent_performance(player_id, limit=5):
     total_kr = 0
     total_adr = 0
     match_count = 0
+    total_utility_damage = 0
+    total_enemies_flashed = 0
+    total_utility_count = 0
+    total_utility_successes = 0
 
     if not history or not history.get("items"):
         return None
@@ -240,6 +244,34 @@ async def get_faceit_recent_performance(player_id, limit=5):
 
         total_clutches += clutches
 
+        try:
+            utility_damage = int(stats_data.get("Utility Damage", 0))
+        except (ValueError, TypeError):
+            utility_damage = 0
+
+        total_utility_damage += utility_damage
+
+        try:
+            enemies_flashed = int(stats_data.get("Enemies Flashed", 0))
+        except (ValueError, TypeError):
+            enemies_flashed = 0
+
+        total_enemies_flashed += enemies_flashed
+
+        try:
+            utility_count = int(stats_data.get("Utility Count", 0))
+        except (ValueError, TypeError):
+            utility_count = 0
+
+        total_utility_count += utility_count
+
+        try:
+            utility_successes = int(stats_data.get("Utility Successes", 0))
+        except (ValueError, TypeError):
+            utility_successes = 0
+
+        total_utility_successes += utility_successes
+
         player_result = stats_data.get("Result")
 
         if player_result == "1":
@@ -256,6 +288,9 @@ async def get_faceit_recent_performance(player_id, limit=5):
     average_adr = total_adr / match_count
     entry_success_rate = (total_entry_wins / total_entry_count if total_entry_count > 0 else 0)
     completed_matches = wins + losses
+    utility_damage_per_match = total_utility_damage / match_count
+    enemies_flashed_per_match = total_enemies_flashed / match_count
+    utility_success_rate = (total_utility_successes / total_utility_count if total_utility_count > 0 else 0)
     win_rate = ((wins / completed_matches) * 100 if completed_matches > 0 else 0)
     
     return {
@@ -268,11 +303,51 @@ async def get_faceit_recent_performance(player_id, limit=5):
         "total_clutches": total_clutches,
         "win_rate": win_rate,
         "kd": kd,
+        "util_dmg_per_match": utility_damage_per_match,
+        "enemies_flashed_per_match": enemies_flashed_per_match,
+        "utility_success_rate": utility_success_rate,
     }
 
 # Helper to calculate best support player
-async def get_best_support_player():
-    return
+def get_support_leaderboard(leaderboard):
+    if not leaderboard:
+        return []
+
+    stats = [
+        "enemies_flashed_per_match",
+        "util_dmg_per_match",
+        "utility_success_rate",
+    ]
+
+    for stat in stats:
+        values = [player[stat] for player in leaderboard]
+
+        minimum = min(values)
+        maximum = max(values)
+
+        for player in leaderboard:
+            if maximum == minimum:
+                player[f"{stat}_score"] = 1
+            else:
+                player[f"{stat}_score"] = (
+                    (player[stat] - minimum)
+                    / (maximum - minimum)
+                )
+
+    for player in leaderboard:
+        player["support_score"] = (
+            player["enemies_flashed_per_match_score"] * 0.38
+            + player["util_dmg_per_match_score"] * 0.42
+            + player["utility_success_rate_score"] * 0.20
+        )
+
+    # Highest support score first
+    return sorted(
+        leaderboard,
+        key=lambda player: player["support_score"],
+        reverse=True
+    )
+
 
 
 
@@ -639,7 +714,7 @@ async def faceit_leaderboard(interaction: discord.Interaction):
     best_mention = f"<@{best['discord_id']}>"
 
     best_message = (
-        f"**{best_mention} is the current GOAT**\n"
+        f"**{best_mention} <- current GOAT**\n"
         f"K/D: **{best['kd']:.2f}** "
         f"over {best['match_count']} games.\n"
         f"Everyone in the server get on your knees and get sucking"
@@ -660,8 +735,41 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         f"Homie is the worst exedian. Everyone point and laugh."
     )
 
-    # Best support
+    # Suport info
+    support_leaderboard = get_support_leaderboard(leaderboard)
 
+    # Best support
+    best_support = max(
+            support_leaderboard,
+            key=lambda player: player["support_score"]
+        )
+
+    best_support_mention = f"<@{best_support['discord_id']}>"
+
+    best_support_message = (
+        f"**{best_support_mention} <- Lineups are working.**\n"
+        f"Enemies flashed (per match): **{best_support['enemies_flashed_per_match']}**\n"
+        f"Utility Damage (per match): **{best_support['util_dmg_per_match']}**\n"
+        f"Utility Success Rate: **{best_support['utility_success_rate']:.2f}**\n"
+        f"Please teach the rest how to use util."
+    )
+
+    #Worst Support
+    worst_support = min(
+        support_leaderboard,
+        key=lambda player: player["support_score"]
+    )
+    
+    worst_support_mention = f"<@{worst_support['discord_id']}>"
+
+    worst_support_message = (
+        f"**{worst_support_mention} <- Can't even throw a grenade right.**\n"
+        f"Enemies flashed (per match): **{worst_support['enemies_flashed_per_match']}**\n"
+        f"Utility Damage (per match): **{worst_support['util_dmg_per_match']}**\n"
+        f"Utility Success Rate: **{worst_support['utility_success_rate']:.2f}**\n"
+        f"Making the exedite eyesight worse with each game played."
+    )
+    
 
     embed = discord.Embed(
         title="Exedite FACEIT Leaderboard",
@@ -683,11 +791,17 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         inline=False
     )
 
-    # embed.add_field(
-    #     name="Grenade Geezer",
-    #     value='',
-    #     inline=False
-    # )
+    embed.add_field(
+        name="Grenade Geezer",
+        value=best_support_message,
+        inline=False
+    )
+
+    embed.add_field(
+        name="Utility Unloader",
+        value=worst_support_message,
+        inline=False
+    )
 
     await interaction.followup.send(embed=embed)
 
