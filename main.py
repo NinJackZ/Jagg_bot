@@ -270,6 +270,12 @@ async def get_faceit_recent_performance(player_id, limit=5):
         "kd": kd,
     }
 
+# Helper to calculate best support player
+async def get_best_support_player():
+    return
+
+
+
 # Helper to transcribe each recieved audio packet
 async def transcribe_voice_loop():
     while True:
@@ -603,11 +609,11 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
         # Rank symbols for the top 3
         if index == 1:
-            rank = "#1"
+            rank = "🫅🏻"
         elif index == 2:
-            rank = "#2"
+            rank = "🥷🏼"
         elif index == 3:
-            rank = "#3"
+            rank = "🐌"
         else:
             rank = f"#{index}"
 
@@ -654,6 +660,9 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         f"Homie is the worst exedian. Everyone point and laugh."
     )
 
+    # Best support
+
+
     embed = discord.Embed(
         title="Exedite FACEIT Leaderboard",
         description=(
@@ -673,6 +682,12 @@ async def faceit_leaderboard(interaction: discord.Interaction):
         value=roast,
         inline=False
     )
+
+    # embed.add_field(
+    #     name="Grenade Geezer",
+    #     value='',
+    #     inline=False
+    # )
 
     await interaction.followup.send(embed=embed)
 
