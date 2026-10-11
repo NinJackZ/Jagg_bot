@@ -806,4 +806,12 @@ async def faceit_leaderboard(interaction: discord.Interaction):
 
     await interaction.followup.send(embed=embed)
 
+    # custom gif for yas
+    yas_last = leaderboard[-1]
+
+    if yas_last["discord_id"] == 258339524579426304:
+        await interaction.followup.send(
+            file=discord.File("assets/Yas.gif")
+        )
+
 bot.run(TOKEN)
