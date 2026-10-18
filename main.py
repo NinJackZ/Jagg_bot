@@ -75,6 +75,15 @@ class JaggBot(commands.Bot):
         await moderate_message(message)
         await self.process_commands(message)
 
+    async def setup_hook(self):
+        self.faceit_session = aiohttp.ClientSession()
+        print("Faceit API session created.")
+
+    async def close(self):
+        if hasattr(self, "faceit_session") and not self.faceit_session.closed:
+            await self.faceit_session.close()
+        await super().close()
+
 bot = JaggBot()
 
 # Define slash commands
