@@ -408,6 +408,38 @@ async def faceit_leaderboard(interaction: discord.Interaction, bot):
     )
 
     support_leaderboard = get_support_leaderboard(leaderboard)
+    support_lines = []
+    support_header = (
+        f"{'Rank':<6}"
+        f"{'Player':<14}"
+        f"{'Flashes':<10}"
+        f"{'Util Dmg':<11}"
+        f"{'Util %':<9}"
+        f"{'Score':<8}"
+    )
+
+    support_lines.extend([support_header, "─" * len(support_header)])
+
+    for index, player in enumerate(support_leaderboard, start=1):
+        if index == 1:
+            rank = "🤯"
+        elif index == 2:
+            rank = "💣"
+        elif index == 3:
+            rank = "🧨"
+        else:
+            rank = f"#{index}"
+
+        support_lines.append(
+            f"{rank:<6}"
+            f"{player['name']:<14}"
+            f"{player['enemies_flashed_per_match']:<10.1f}"
+            f"{player['util_dmg_per_match']:<11.1f}"
+            f"{player['utility_success_rate'] * 100:<9.1f}"
+            f"{player['support_score']:<8.3f}"
+        )
+
+    support_table = "\n".join(support_lines)
 
     best_support = max(
         support_leaderboard,
@@ -416,9 +448,9 @@ async def faceit_leaderboard(interaction: discord.Interaction, bot):
 
     best_support_message = (
         f"**<@{best_support['discord_id']}> <- Lineups are working.**\n"
-        f"Enemies flashed (per match): **{best_support['enemies_flashed_per_match']}**\n"
-        f"Utility Damage (per match): **{best_support['util_dmg_per_match']}**\n"
-        f"Utility Success Rate: **{best_support['utility_success_rate']:.2f}**\n"
+        f"Enemies flashed (per match): **{best_support['enemies_flashed_per_match']:.1f}**\n"
+        f"Utility Damage (per match): **{best_support['util_dmg_per_match']:.1f}**\n"
+        f"Utility Success Rate: **{best_support['utility_success_rate']:.1%}**\n"
         "Please teach the rest how to use util."
     )
 
@@ -429,9 +461,9 @@ async def faceit_leaderboard(interaction: discord.Interaction, bot):
 
     worst_support_message = (
         f"**<@{worst_support['discord_id']}> <- Can't even throw a grenade right.**\n"
-        f"Enemies flashed (per match): **{worst_support['enemies_flashed_per_match']}**\n"
-        f"Utility Damage (per match): **{worst_support['util_dmg_per_match']}**\n"
-        f"Utility Success Rate: **{worst_support['utility_success_rate']:.2f}**\n"
+        f"Enemies flashed (per match): **{worst_support['enemies_flashed_per_match']:.1f}**\n"
+        f"Utility Damage (per match): **{worst_support['util_dmg_per_match']:.1f}**\n"
+        f"Utility Success Rate: **{worst_support['utility_success_rate']:.1%}**\n"
         "Making the exedite eyesight worse with each game played."
     )
 
@@ -443,6 +475,13 @@ async def faceit_leaderboard(interaction: discord.Interaction, bot):
 
     embed.add_field(name="Current GOAT", value=best_message, inline=False)
     embed.add_field(name="Server Shitter", value=roast, inline=False)
+
+    embed.add_field(
+        name="Support Leaderboard",
+        value=f"```text\n{support_table}\n```",
+        inline=False
+    )
+
     embed.add_field(name="Grenade Geezer", value=best_support_message, inline=False)
     embed.add_field(name="Utility Unloader", value=worst_support_message, inline=False)
 
